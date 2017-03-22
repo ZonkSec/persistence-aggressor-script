@@ -433,15 +433,15 @@ sub remWMIOnStart {
 }
 sub addWMIDaily {
     if (isAdmin($1)){
-        if ($5) {
-            if($6) {
-                $taskHour = $5;
-                $taskMinute = $6;
-            }
-            else {
-                  berror($1, "Specify Hour, Minute"); 
-            }
+        if ($5 && $6) {
+            $taskHour = $5;
+            $taskMinute = $6;
         }
+        else {
+            berror($1, "Specify Hour, Minute"); 
+            return;  
+     }
+    
         if ($7) {
             $payloadName = $7;
             $taskName = $7;
